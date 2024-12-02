@@ -79,8 +79,17 @@ resource "aws_cloudfront_distribution" "this" {
 
   }
 
-   # see - https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution#default_cache_behavior
+  # see - https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution#default_cache_behavior
   default_cache_behavior {
+
+    #  origin_request_policy_id (Optional) - Unique identifier of the origin request policy that is attached to the behavior.
+    #  path_pattern (Required) - Pattern (for example, images/*.jpg) that specifies which requests you want this cache behavior to apply to.
+    #  realtime_log_config_arn (Optional) - ARN of the real-time log configuration that is attached to this cache behavior.
+    #  response_headers_policy_id (Optional) - Identifier for a response headers policy.
+    #  smooth_streaming (Optional) - Indicates whether you want to distribute media files in Microsoft Smooth Streaming format using the origin that is associated with this cache behavior.
+    #  trusted_key_groups (Optional) - List of key group IDs that CloudFront can use to validate signed URLs or signed cookies. See the CloudFront User Guide for more information about this feature.
+    #  trusted_signers (Optional) - List of AWS account IDs (or self) that you want to allow to create signed URLs for private content. See the CloudFront User Guide for more information about this feature.
+
     target_origin_id          = var.bucket_domain_name
     allowed_methods           = var.allowed_methods
     cached_methods            = var.cached_methods
@@ -124,15 +133,6 @@ resource "aws_cloudfront_distribution" "this" {
       }
     }
 
-    #  origin_request_policy_id (Optional) - Unique identifier of the origin request policy that is attached to the behavior.
-    #  path_pattern (Required) - Pattern (for example, images/*.jpg) that specifies which requests you want this cache behavior to apply to.
-    #  realtime_log_config_arn (Optional) - ARN of the real-time log configuration that is attached to this cache behavior.
-    #  response_headers_policy_id (Optional) - Identifier for a response headers policy.
-    #  smooth_streaming (Optional) - Indicates whether you want to distribute media files in Microsoft Smooth Streaming format using the origin that is associated with this cache behavior.
-    #  target_origin_id (Required) - Value of ID for the origin that you want CloudFront to route requests to when a request matches the path pattern either for a cache behavior or for the default cache behavior.
-    #  trusted_key_groups (Optional) - List of key group IDs that CloudFront can use to validate signed URLs or signed cookies. See the CloudFront User Guide for more information about this feature.
-    #  trusted_signers (Optional) - List of AWS account IDs (or self) that you want to allow to create signed URLs for private content. See the CloudFront User Guide for more information about this feature.
-    #  viewer_protocol_policy (Required) - Use this element to specify the protocol that users can use to access the files in the origin specified by TargetOriginId when a request matches the path pattern in PathPattern.
   }
 
   # see - https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution#ordered_cache_behavior
@@ -160,16 +160,16 @@ resource "aws_cloudfront_distribution" "this" {
       response_headers_policy_id  = try(behavior.value.response_headers_policy_id, null)
 
       dynamic "forwarded_values" {
-        for_each = lookup(behavior.value, "use_forwarded_values", true) ? [true] : []
+        for_each = try(behavior.value.use_forwarded_values, false) ? [true] : []
 
         content {
-          query_string            = lookup(behavior.value, "query_string", false)
-          query_string_cache_keys = lookup(behavior.value, "query_string_cache_keys", [])
-          headers                 = lookup(behavior.value, "headers", [])
+          headers                 = try(behavior.value.headers, [])
+          query_string            = try(behavior.value.query_string, false)
+          query_string_cache_keys = try(behavior.value.query_string_cache_keys, [])
 
           cookies {
-            forward               = lookup(behavior.value, "cookies_forward", "none")
-            whitelisted_names     = lookup(behavior.value, "cookies_whitelisted_names", null)
+            forward               = try(behavior.value.cookies_forward, "none")
+            whitelisted_names     = try(behavior.value.cookies_whitelisted_names, [])
           }
         }
       }
