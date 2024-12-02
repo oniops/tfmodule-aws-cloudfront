@@ -26,7 +26,7 @@ data "aws_cloudfront_cache_policy" "cache" {
 }
 
 module "cfKeyGrp" {
-  source      = "git::https://code.bespinglobal.com/scm/op/tfmodule-aws-cloudfront.git?ref=v1.0.0//keygroup/"
+  source      = "git::https://code.bespinglobal.com/scm/op/tfmodule-aws-cloudfront.git//keygroup?ref=v1.0.0"
   name        = "${local.project}-cf-keygroup"
   public_keys = {
     "contents-s3-pub" = {
