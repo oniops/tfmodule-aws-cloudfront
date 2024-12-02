@@ -1,5 +1,7 @@
 # tfmodule-aws-cloudfront
 
+AWS CloudFront 서비스를 구성합니다.
+
 ## Usage
 
 사전에, SSM ParameterStore에 CloudFront Public Key를 등록해야 합니다. (예: `/dev/cloudfront/contents/publicKey`)

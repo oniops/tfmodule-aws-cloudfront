@@ -1,3 +1,8 @@
+variable "create" {
+  type    = bool
+  default = true
+}
+
 # CloudFront Variables
 variable "enabled" {
   type        = bool
@@ -12,6 +17,13 @@ variable "service_name" {
 variable "wait_for_deployment" {
   type    = bool
   default = true
+}
+
+# origin_access_control
+variable "origin_access_control_description" {
+  type        = string
+  default     = null
+  description = "The description of origin that this Origin Access Control is for."
 }
 
 variable "origin_access_control_origin_type" {
@@ -58,6 +70,60 @@ variable "origin_path" {
   description = "Optional element that causes CloudFront to request your content from a directory in your Amazon S3 bucket or your custom origin."
 }
 
+variable "origin_access_control_id" {
+  # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html
+  type        = string
+  description = "CloudFront provides two ways to send authenticated requests to an Amazon S3 origin: origin access control (OAC) and origin access identity (OAI). OAC helps you secure your origins, such as for Amazon S3."
+  default     = null
+}
+
+variable "connection_attempts" {
+  type        = number
+  description = "Number of times that CloudFront attempts to connect to the origin. Must be between 1-3. Defaults to 3."
+  default     = null
+}
+
+variable "connection_timeout" {
+  type        = number
+  description = "Number of seconds that CloudFront waits when trying to establish a connection to the origin. Must be between 1-10. Defaults to 10."
+  default     = null
+}
+
+
+variable "origin_shield" {
+  type = object({
+    enabled = bool
+    region  = string
+  })
+  default     = null
+  description = <<EOF
+Using Origin Shield can help reduce the load on your origin.
+  see - https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/origin-shield.html
+  origin_shield = {
+    enabled = true
+    region  = "us-east-1"
+  }
+EOF
+}
+
+variable "custom_header" {
+  type = list(object({
+    name  = string
+    value = string
+  }))
+  default = []
+  description = <<EOF
+List of one or more custom headers passed to the origin
+  see - https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/origin-shield.html
+  custom_header = [
+    {
+      "Cache-Control" = "X-Custom-Header",
+      "HeaderValue": "MyCustomValue"
+    }
+  ]
+EOF
+}
+
 variable "price_class" {
   type        = string
   default     = "PriceClass_100"
@@ -73,7 +139,7 @@ EOF
 }
 
 variable "domain_aliases" {
-  type        = list(string)
+  type = list(string)
   description = "Extra CNAMEs (alternate domain names), if any, for this distribution."
   default     = null # ["tools.customer.co.kr"]
 }
@@ -84,8 +150,8 @@ variable "create_origin_access_identity" {
 }
 
 variable "origin_access_identities" {
-  type        = map(string)
-  default     = {}
+  type = map(string)
+  default = {}
   description = <<EOF
 
   origin_access_identities = {
@@ -96,22 +162,32 @@ EOF
 
 }
 
+################################################################################
+# default_cache_behavior
+################################################################################
+
 variable "allowed_methods" {
-  type        = list(string)
-  default     = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+  type = list(string)
+  default = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
   description = "List of allowed methods (e.g. ` GET, PUT, POST, DELETE, HEAD`) for AWS CloudFront"
 }
 
 variable "cached_methods" {
-  type        = list(string)
-  default     = ["GET", "HEAD"]
+  type = list(string)
+  default = ["GET", "HEAD"]
   description = "List of cached methods (e.g. ` GET, PUT, POST, DELETE, HEAD`)"
+}
+
+variable "cache_policy_id" {
+  type        = string
+  default     = ""
+  description = "Unique identifier of the cache policy that is attached to the cache behavior. If configuring the default_cache_behavior either cache_policy_id or forwarded_values must be set."
 }
 
 variable "viewer_protocol_policy" {
   type        = string
   default     = "redirect-to-https"
-  description = "allow-all - redirect-to-https"
+  description = "Use this element to specify the protocol that users can use to access the files in the origin specified by TargetOriginId. One of allow-all, https-only, or redirect-to-https."
 }
 
 variable "default_ttl" {
@@ -133,8 +209,29 @@ variable "max_ttl" {
 }
 
 variable "compress" {
+  type        = bool
+  default     = true
+  description = "Whether you want CloudFront to automatically compress content for web requests."
+}
+
+variable "field_level_encryption_id" {
+  type        = string
+  default     = ""
+  description = "Field level encryption configuration ID"
+}
+
+###########################################################
+# forwarded_values - Deprecated use cache_policy_id or origin_request_policy_id instead
+###########################################################
+variable "use_forwarded_values" {
   type    = bool
-  default = true
+  default = false
+}
+
+variable "forward_headers" {
+  description = "Specifies the Headers, if any, that you want CloudFront to vary upon for this cache behavior. Specify `*` to include all headers."
+  type = list(string)
+  default = []
 }
 
 variable "forward_query_string" {
@@ -143,10 +240,24 @@ variable "forward_query_string" {
   description = "Forward query strings to the origin that is associated with this cache behavior"
 }
 
-variable "forward_headers" {
-  description = "Specifies the Headers, if any, that you want CloudFront to vary upon for this cache behavior. Specify `*` to include all headers."
+variable "query_string_cache_keys" {
   type        = list(string)
   default     = []
+  description = <<EOF
+When specified, along with a value of true for query_string, all query strings are forwarded, however only the query string keys listed in this argument are cached.
+
+  query_string_cache_keys = ["is_login", "has_permission"]
+EOF
+}
+
+variable "whitelisted_names" {
+  type        = list(string)
+  default     = []
+  description = <<EOF
+If you have specified whitelist to forward, the whitelisted cookies that you want CloudFront to forward to your origin.
+
+  whitelisted_names = ["ridi_app_theme", "stage"]
+EOF
 }
 
 variable "forward_cookies" {
@@ -181,12 +292,16 @@ variable "enable_custom_error_response" {
 
 variable "trusted_key_groups" {
   description = "List of key group IDs that CloudFront can use to validate signed URLs or signed cookies"
-  type        = list(string)
+  type = list(string)
   default     = null
 }
 
+################################################################################
+# ordered_cache_behaviors
+################################################################################
+
 variable "ordered_cache_behaviors" {
-  type    = any
+  type = any
   default = []
 
   description = <<EOF
@@ -221,9 +336,37 @@ path_pattern: (Optional) The pattern (for example, images/*.jpg) that specifies 
         event_type   = "viewer-request" # Valid values are viewer-request and viewer-response.
         function_arn = cloudfront_functions.some.arn
       }
+
+      forwarded_values = {
+        event_type   = "viewer-request" # Valid values are viewer-request and viewer-response.
+        function_arn = cloudfront_functions.some.arn
+      }
+
+
+
     },
   ]
 
 EOF
 }
 
+variable "logging_config" {
+  type        = any
+  default = {}
+  description = <<EOF
+The logging configuration that controls how logs are written to your distribution (maximum one).
+
+  logging_config = {
+    include_cookies = false
+    bucket          = module.log_bucket.s3_bucket_bucket_domain_name
+    prefix          = "cloudfront/"
+    enabled         = true
+  }
+EOF
+}
+
+variable "web_acl_arn" {
+  type        = string
+  description = "ARN of the AWS WAF web ACL that is associated with the distribution"
+  default     = ""
+}

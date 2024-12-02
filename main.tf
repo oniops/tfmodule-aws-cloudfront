@@ -2,7 +2,10 @@
 # see - https://github.com/ankit-jn/terraform-aws-examples/blob/main/aws-cdn/dev.tfvars
 
 locals {
-  cloudfront_name_prefix = format("%s-%s", var.context.project, var.service_name)
+  project                = var.context.project
+  cloudfront_name_prefix = "${local.project}-${var.service_name}"
+  create                 = var.create
+  create_oac             = local.create && var.origin_access_control_id == null
   custom_error_response  = var.enable_custom_error_response ? [
     {
       error_code         = 404
@@ -18,8 +21,9 @@ locals {
 }
 
 resource "aws_cloudfront_origin_access_control" "this" {
-  name                              = format("%s-cf-oac", local.cloudfront_name_prefix)
-  description                       = format("%s-cf-oac Policy", local.cloudfront_name_prefix)
+  count                             = local.create_oac ? 1 : 0
+  name                              = "${local.cloudfront_name_prefix}-cf-oac"
+  description                       = var.origin_access_control_description != null ? var.origin_access_control_description : "${local.cloudfront_name_prefix}-cf-oac Policy"
   origin_access_control_origin_type = var.origin_access_control_origin_type
   signing_protocol                  = var.signing_protocol
   signing_behavior                  = var.signing_behavior
@@ -29,55 +33,88 @@ resource "aws_cloudfront_distribution" "this" {
   enabled             = var.enabled
   is_ipv6_enabled     = var.is_ipv6_enabled
   default_root_object = var.default_root_object
-  comment             = format("%s-cf-dist", local.cloudfront_name_prefix)
+  comment = format("%s-cf-dist", local.cloudfront_name_prefix)
   price_class         = var.price_class
   aliases             = var.domain_aliases
   retain_on_delete    = false
   wait_for_deployment = var.wait_for_deployment
 
+  dynamic "logging_config" {
+    for_each = length(keys(var.logging_config)) == 0 ? [] : [var.logging_config]
+
+    content {
+      bucket = logging_config.value["bucket"]
+      prefix = lookup(logging_config.value, "prefix", null)
+      include_cookies = lookup(logging_config.value, "include_cookies", null)
+    }
+  }
+
   origin {
     domain_name              = var.bucket_regional_domain_name
     origin_id                = var.bucket_domain_name
-    origin_access_control_id = aws_cloudfront_origin_access_control.this.id
     origin_path              = var.origin_path
+    origin_access_control_id = local.create_oac ? aws_cloudfront_origin_access_control.this[0].id : var.origin_access_control_id
+    connection_attempts      = var.connection_attempts
+    connection_timeout       = var.connection_timeout
 
-    #    domain_name (Required) - DNS domain name of either the S3 bucket, or web site of your custom origin.
-    #    origin_id (Required) - Unique identifier for the origin.
-    #    origin_path (Optional) - Optional element that causes CloudFront to request your content from a directory in your Amazon S3 bucket or your custom origin.
-    #    origin_shield - (Optional) CloudFront Origin Shield configuration information. Using Origin Shield can help reduce the load on your origin.
-    #    origin_access_control_id (Optional) - Unique identifier of a CloudFront origin access control for this origin.
-    #    s3_origin_config - (Optional) CloudFront S3 origin configuration information. If a custom origin is required, use custom_origin_config instead.
-    #    connection_attempts (Optional) - Number of times that CloudFront attempts to connect to the origin. Must be between 1-3. Defaults to 3.
-    #    connection_timeout (Optional) - Number of seconds that CloudFront waits when trying to establish a connection to the origin. Must be between 1-10. Defaults to 10.
-    #    custom_origin_config - The CloudFront custom origin configuration information. If an S3 origin is required, use origin_access_control_id or s3_origin_config instead.
-    #    custom_header (Optional) - One or more sub-resources with name and value parameters that specify header data that will be sent to the origin (multiples allowed).
-  }
-
-  # see - https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution#default_cache_behavior
-  default_cache_behavior {
-    allowed_methods  = var.allowed_methods
-    cached_methods   = var.cached_methods
-    target_origin_id = var.bucket_domain_name
-
-    viewer_protocol_policy = var.viewer_protocol_policy
-    default_ttl            = var.default_ttl
-    min_ttl                = var.min_ttl
-    max_ttl                = var.max_ttl
-    compress               = var.compress
-
-    forwarded_values {
-      query_string = var.forward_query_string
-      headers      = var.forward_headers
-      cookies {
-        forward = var.forward_cookies
+    dynamic "origin_shield" {
+      for_each = var.origin_shield != null ? [true] : []
+      content {
+        enabled              = var.origin_shield.enabled
+        origin_shield_region = var.origin_shield.region
       }
     }
 
-    #  allowed_methods (Required) - Controls which HTTP methods CloudFront processes and forwards to your Amazon S3 bucket or your custom origin.
-    #  cached_methods (Required) - Controls whether CloudFront caches the response to requests using the specified HTTP methods.
-    #  cache_policy_id (Optional) - Unique identifier of the cache policy that is attached to the cache behavior.
-    #  compress (Optional) - Whether you want CloudFront to automatically compress content for web requests that include Accept-Encoding: gzip in the request header (default: false).
-    #  field_level_encryption_id (Optional) - Field level encryption configuration ID.
+    dynamic "custom_header" {
+      for_each = var.custom_header
+      content {
+        name  = custom_header.value.name
+        value = custom_header.value.value
+      }
+    }
+
+    #    s3_origin_config - (Optional) CloudFront S3 origin configuration information. If a custom origin is required, use custom_origin_config instead.
+    #    custom_origin_config - The CloudFront custom origin configuration information. If an S3 origin is required, use origin_access_control_id or s3_origin_config instead.
+    #    custom_header (Optional) - One or more sub-resources with name and value parameters that specify header data that will be sent to the origin (multiples allowed).
+
+  }
+
+   # see - https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution#default_cache_behavior
+  default_cache_behavior {
+    target_origin_id          = var.bucket_domain_name
+    allowed_methods           = var.allowed_methods
+    cached_methods            = var.cached_methods
+    cache_policy_id           = var.cache_policy_id
+    viewer_protocol_policy    = var.viewer_protocol_policy
+    default_ttl               = var.default_ttl
+    min_ttl                   = var.min_ttl
+    max_ttl                   = var.max_ttl
+    compress                  = var.compress
+    field_level_encryption_id = var.field_level_encryption_id
+
+    dynamic "forwarded_values" {
+      for_each = var.use_forwarded_values ? [true] : []
+      content {
+        headers                 = var.forward_headers
+        query_string            = var.forward_query_string
+        query_string_cache_keys = var.query_string_cache_keys
+        cookies {
+          forward               = var.forward_cookies
+          whitelisted_names     = var.whitelisted_names
+        }
+      }
+    }
+
+    dynamic "lambda_function_association" {
+      for_each = try(var.lambda_function_association, {})
+      iterator = lambda
+      content {
+        event_type    = lambda.value.event_type # lambda_function_association.value["event_type"]
+        lambda_arn    = lambda.value.arn
+        include_body  = try(lambda.value.include_body, false)
+      }
+    }
+
     #  lambda_function_association (Optional) - A config block that triggers a lambda function with specific actions (maximum 4).
     #  function_association (Optional) - A config block that triggers a cloudfront function with specific actions (maximum 2).
     #  default_ttl (Optional) - Default amount of time (in seconds)
@@ -100,34 +137,46 @@ resource "aws_cloudfront_distribution" "this" {
     iterator = behavior
 
     content {
-      target_origin_id           = behavior.value.target_origin_id
-      path_pattern               = try(behavior.value.path_pattern, "*")
-      allowed_methods            = try(behavior.value.allowed_methods, ["GET", "HEAD", "OPTIONS"])
-      cached_methods             = try(behavior.value.cached_methods, ["GET", "HEAD", "OPTIONS"])
-      # forward rules
-      cache_policy_id            = try(behavior.value.cache_policy_id, null)
-      origin_request_policy_id   = try(behavior.value.origin_request_policy_id, null)
+      target_origin_id            = behavior.value.target_origin_id
+      path_pattern                = try(behavior.value.path_pattern, "*")
+      allowed_methods             = try(behavior.value.allowed_methods, ["GET", "HEAD", "OPTIONS"])
+      cached_methods              = try(behavior.value.cached_methods, ["GET", "HEAD", "OPTIONS"])
+      cache_policy_id             = try(behavior.value.cache_policy_id, null)
+      origin_request_policy_id    = try(behavior.value.origin_request_policy_id, null)
+      viewer_protocol_policy      = try(behavior.value.viewer_protocol_policy, "https-only")
+      compress                    = try(behavior.value.compress, false)
+      field_level_encryption_id   = try(behavior.value.field_level_encryption_id, "")
+      default_ttl                 = try(behavior.value.default_ttl, 86400)
+      min_ttl                     = try(behavior.value.min_ttl, 0)
+      max_ttl                     = try(behavior.value.max_ttl, 31536000)
+      smooth_streaming            = try(behavior.value.smooth_streaming, true)
+      realtime_log_config_arn     = try(behavior.value.realtime_log_config_arn, null)
+      trusted_signers             = try(behavior.value.trusted_signers, null)
+      trusted_key_groups          = try(behavior.value.trusted_key_groups, null)
+      response_headers_policy_id  = try(behavior.value.response_headers_policy_id, null)
 
-      #
-      viewer_protocol_policy     = try(behavior.value.viewer_protocol_policy, "https-only")
-      compress                   = try(behavior.value.compress, false)
-      #
-      default_ttl                = try(behavior.value.default_ttl, 86400)
-      min_ttl                    = try(behavior.value.min_ttl, 0)
-      max_ttl                    = try(behavior.value.max_ttl, 31536000)
-      smooth_streaming           = try(behavior.value.smooth_streaming, true)
-      realtime_log_config_arn    = try(behavior.value.realtime_log_config_arn, null)
-      trusted_signers            = try(behavior.value.trusted_signers, null)
-      trusted_key_groups         = try(behavior.value.trusted_key_groups, null)
-      response_headers_policy_id = try(behavior.value.response_headers_policy_id, null)
+      dynamic "forwarded_values" {
+        for_each = lookup(behavior.value, "use_forwarded_values", true) ? [true] : []
+
+        content {
+          query_string            = lookup(behavior.value, "query_string", false)
+          query_string_cache_keys = lookup(behavior.value, "query_string_cache_keys", [])
+          headers                 = lookup(behavior.value, "headers", [])
+
+          cookies {
+            forward               = lookup(behavior.value, "cookies_forward", "none")
+            whitelisted_names     = lookup(behavior.value, "cookies_whitelisted_names", null)
+          }
+        }
+      }
 
       dynamic "lambda_function_association" {
         for_each = try(behavior.value.lambda_functions, {})
         iterator = lambda
         content {
-          event_type   = lambda.value.event_type # lambda_function_association.value["event_type"]
-          lambda_arn   = lambda.value.arn
-          include_body = try(lambda.value.include_body, false)
+          event_type    = lambda.value.event_type # lambda_function_association.value["event_type"]
+          lambda_arn    = lambda.value.arn
+          include_body  = try(lambda.value.include_body, false)
         }
       }
 
@@ -166,6 +215,8 @@ resource "aws_cloudfront_distribution" "this" {
       restriction_type = "none"
     }
   }
+
+  web_acl_id = var.web_acl_arn
 
   tags = merge(var.context.tags, {
     Name = format("%s-cf-dist", local.cloudfront_name_prefix)
