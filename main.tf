@@ -106,16 +106,24 @@ resource "aws_cloudfront_distribution" "this" {
     }
 
     dynamic "lambda_function_association" {
-      for_each = try(var.lambda_function_association, {})
+      for_each = var.lambda_function_association
       iterator = lambda
       content {
-        event_type    = lambda.value.event_type # lambda_function_association.value["event_type"]
-        lambda_arn    = lambda.value.arn
-        include_body  = try(lambda.value.include_body, false)
+        event_type   = lambda.value.event_type
+        lambda_arn   = lambda.value.lambda_arn
+        include_body = lambda.value.include_body
       }
     }
 
-    #  lambda_function_association (Optional) - A config block that triggers a lambda function with specific actions (maximum 4).
+    dynamic "function_association" {
+      for_each = var.function_association
+      iterator = func
+      content {
+        event_type   = func.value.event_type
+        function_arn = func.value.function_arn
+      }
+    }
+
     #  function_association (Optional) - A config block that triggers a cloudfront function with specific actions (maximum 2).
     #  default_ttl (Optional) - Default amount of time (in seconds)
     #  max_ttl (Optional) - Maximum amount of time (in seconds)

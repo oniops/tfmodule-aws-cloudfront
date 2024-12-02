@@ -266,6 +266,56 @@ variable "forward_cookies" {
   default     = "none"
 }
 
+
+###########################################################
+# lambda_function_association
+###########################################################
+variable "lambda_function_association" {
+  type = list(map(string))
+  default = []
+  description = <<EOF
+Lambda@Edge is a serverless computing service that leverages AWS Lambda to add custom actions to CloudFront's request flow.
+Support event type are: viewer-request, viewer-response, origin-request, origin-response
+A config block that triggers a lambda function with specific actions (maximum 4)
+see - https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution#lambda_function_association-1
+
+  lambda_function_association = [
+    {
+      event_type   = "viewer-request"
+      lambda_arn   = "arn:aws:lambda:us-east-1:111122223333:function:cf-viewer-req-lambda"
+      include_body = false
+    },
+    {
+      event_type   = "origin-request"
+      lambda_arn   = "arn:aws:lambda:us-east-1:111122223333:function:cf-origin-req-lambda"
+      include_body = false
+    },
+  ]
+EOF
+}
+
+variable "function_association" {
+  type = list(map(string))
+  default = []
+  description = <<EOF
+A CloudFront-specific feature for executing lightweight JavaScript functions that have limited execution time and functionality and are suitable for simple tasks (modifying headers, redirecting URIs, etc.).
+Support event type are: viewer-request, viewer-response
+A config block that triggers a cloudfront function with specific actions (maximum 2).
+see - https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution#function_association-1
+
+  function_association = [
+    {
+      event_type   = "viewer-request"
+      function_arn = "arn:aws:lambda:us-east-1:111122223333:function:cf-viewer-req-func"
+    },
+    {
+      event_type   = "viewer-response"
+      function_arn = "arn:aws:lambda:us-east-1:111122223333:function:cf-viewer-res-func"
+    },
+  ]
+EOF
+}
+
 # viewer_certificate
 variable "cloudfront_default_certificate" {
   type        = bool
