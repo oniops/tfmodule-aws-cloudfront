@@ -106,7 +106,7 @@ resource "aws_cloudfront_distribution" "this" {
     }
 
     dynamic "lambda_function_association" {
-      for_each = var.lambda_function_association
+      for_each = var.lambda_functions
       iterator = lambda
       content {
         event_type   = lambda.value.event_type
@@ -116,7 +116,7 @@ resource "aws_cloudfront_distribution" "this" {
     }
 
     dynamic "function_association" {
-      for_each = var.function_association
+      for_each = var.cloudfront_functions
       iterator = func
       content {
         event_type   = func.value.event_type
@@ -124,10 +124,6 @@ resource "aws_cloudfront_distribution" "this" {
       }
     }
 
-    #  function_association (Optional) - A config block that triggers a cloudfront function with specific actions (maximum 2).
-    #  default_ttl (Optional) - Default amount of time (in seconds)
-    #  max_ttl (Optional) - Maximum amount of time (in seconds)
-    #  min_ttl (Optional) - Minimum amount of time
     #  origin_request_policy_id (Optional) - Unique identifier of the origin request policy that is attached to the behavior.
     #  path_pattern (Required) - Pattern (for example, images/*.jpg) that specifies which requests you want this cache behavior to apply to.
     #  realtime_log_config_arn (Optional) - ARN of the real-time log configuration that is attached to this cache behavior.
@@ -179,23 +175,24 @@ resource "aws_cloudfront_distribution" "this" {
       }
 
       dynamic "lambda_function_association" {
-        for_each = try(behavior.value.lambda_functions, {})
+        for_each = try(behavior.value.lambda_functions, [])
         iterator = lambda
         content {
-          event_type    = lambda.value.event_type # lambda_function_association.value["event_type"]
-          lambda_arn    = lambda.value.arn
+          event_type    = lambda.value.event_type
+          lambda_arn    = lambda.value.lambda_arn
           include_body  = try(lambda.value.include_body, false)
         }
       }
 
       dynamic "function_association" {
-        for_each = try(behavior.value.cloudfront_functions, {})
-        iterator = ass
+        for_each = try(behavior.value.cloudfront_functions,[])
+        iterator = func
         content {
-          event_type   = ass.value.event_type
-          function_arn = ass.value.function_arn
+          event_type   = func.value.event_type
+          function_arn = func.value.function_arn
         }
       }
+
     }
   }
 

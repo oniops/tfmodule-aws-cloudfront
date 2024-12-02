@@ -268,9 +268,9 @@ variable "forward_cookies" {
 
 
 ###########################################################
-# lambda_function_association
+# lambda_functions & cloudfront_functions
 ###########################################################
-variable "lambda_function_association" {
+variable "lambda_functions" {
   type = list(map(string))
   default = []
   description = <<EOF
@@ -294,7 +294,7 @@ see - https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resource
 EOF
 }
 
-variable "function_association" {
+variable "cloudfront_functions" {
   type = list(map(string))
   default = []
   description = <<EOF
@@ -382,10 +382,12 @@ path_pattern: (Optional) The pattern (for example, images/*.jpg) that specifies 
         include_body = false
       }
 
-      cloudfront_functions = {
-        event_type   = "viewer-request" # Valid values are viewer-request and viewer-response.
-        function_arn = cloudfront_functions.some.arn
-      }
+      cloudfront_functions = [
+        {
+          event_type   = "viewer-request" # Valid values are viewer-request and viewer-response.
+          function_arn = cloudfront_functions.some.arn
+        }
+      ]
 
       forwarded_values = {
         event_type   = "viewer-request" # Valid values are viewer-request and viewer-response.
