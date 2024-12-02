@@ -4,7 +4,8 @@ AWS CloudFront 서비스를 구성합니다.
 
 ## Usage
 
-사전에, SSM ParameterStore에 CloudFront Public Key를 등록해야 합니다. (예: `/dev/cloudfront/contents/publicKey`)
+S3 버킷의 객체를 CF 가 signed-url을 통해 액세스하려면, trusted_key_groups 설정이 필요합니다.  
+이 구성은 사전에 SSM ParameterStore에 CloudFront Public Key를 등록해야 합니다. (예: `/dev/cloudfront/contents/publicKey`)
 
 ```hcl
 locals {
@@ -71,6 +72,5 @@ module "cf" {
 
   depends_on = [module.cfKeyGrp]
 }
-
 
 ```
