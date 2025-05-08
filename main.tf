@@ -93,11 +93,11 @@ resource "aws_cloudfront_distribution" "this" {
     target_origin_id          = var.bucket_domain_name
     allowed_methods           = var.allowed_methods
     cached_methods            = var.cached_methods
-    cache_policy_id           = var.cache_policy_id
     viewer_protocol_policy    = var.viewer_protocol_policy
-    default_ttl               = var.default_ttl
-    min_ttl                   = var.min_ttl
-    max_ttl                   = var.max_ttl
+    cache_policy_id           = var.cache_policy_id
+    default_ttl               = var.cache_policy_id == null || var.cache_policy_id == "" ? var.default_ttl : 0
+    min_ttl                   = var.cache_policy_id == null || var.cache_policy_id == "" ? var.min_ttl : 0
+    max_ttl                   = var.cache_policy_id == null || var.cache_policy_id == "" ? var.max_ttl : 0
     compress                  = var.compress
     field_level_encryption_id = var.field_level_encryption_id
 
@@ -145,14 +145,14 @@ resource "aws_cloudfront_distribution" "this" {
       path_pattern                = try(behavior.value.path_pattern, "*")
       allowed_methods             = try(behavior.value.allowed_methods, ["GET", "HEAD", "OPTIONS"])
       cached_methods              = try(behavior.value.cached_methods, ["GET", "HEAD", "OPTIONS"])
-      cache_policy_id             = try(behavior.value.cache_policy_id, null)
       origin_request_policy_id    = try(behavior.value.origin_request_policy_id, null)
       viewer_protocol_policy      = try(behavior.value.viewer_protocol_policy, "https-only")
       compress                    = try(behavior.value.compress, false)
       field_level_encryption_id   = try(behavior.value.field_level_encryption_id, "")
-      default_ttl                 = try(behavior.value.default_ttl, 86400)
-      min_ttl                     = try(behavior.value.min_ttl, 0)
-      max_ttl                     = try(behavior.value.max_ttl, 31536000)
+      cache_policy_id             = try(behavior.value.cache_policy_id, null)
+      default_ttl                 = try(behavior.value.cache_policy_id, null) == null ? try(behavior.value.default_ttl, 86400) : 0
+      min_ttl                     = try(behavior.value.cache_policy_id, null) == null ? try(behavior.value.min_ttl, 0) : 0
+      max_ttl                     = try(behavior.value.cache_policy_id, null) == null ? try(behavior.value.max_ttl, 31536000) : 0
       smooth_streaming            = try(behavior.value.smooth_streaming, true)
       realtime_log_config_arn     = try(behavior.value.realtime_log_config_arn, null)
       trusted_signers             = try(behavior.value.trusted_signers, null)
