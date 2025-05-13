@@ -20,6 +20,11 @@ variable "wait_for_deployment" {
 }
 
 # origin_access_control
+variable "create_origin_access_control" {
+  type    = bool
+  default = true
+}
+
 variable "origin_access_control_description" {
   type        = string
   default     = null
@@ -56,12 +61,14 @@ variable "default_root_object" {
   description = "Object that you want CloudFront to return (for example, index.html) when an end user requests the root URL."
 }
 
-variable "bucket_regional_domain_name" {
-  type = string
+variable "origin_domain_name" {
+  type        = string
+  description = "Origin domain name like bucket_regional_domain_name or ALB domain."
 }
 
-variable "bucket_domain_name" {
-  type = string
+variable "origin_id" {
+  type        = string
+  description = "Origin ID like bucket_domain_name or unique origin ID"
 }
 
 variable "origin_path" {
@@ -184,6 +191,18 @@ variable "cache_policy_id" {
   description = "Unique identifier of the cache policy that is attached to the cache behavior. If configuring the default_cache_behavior either cache_policy_id or forwarded_values must be set."
 }
 
+variable "origin_request_policy_id" {
+  type        = string
+  default     = ""
+  description = "Unique identifier of the cache policy that is attached to the cache behavior. If configuring the default_cache_behavior either cache_policy_id or forwarded_values must be set."
+}
+
+variable "response_headers_policy_id" {
+  type        = string
+  default     = ""
+  description = "Identifier for a response headers policy."
+}
+
 variable "viewer_protocol_policy" {
   type        = string
   default     = "redirect-to-https"
@@ -223,10 +242,10 @@ variable "field_level_encryption_id" {
 ###########################################################
 # forwarded_values - Deprecated use cache_policy_id or origin_request_policy_id instead
 ###########################################################
-variable "use_forwarded_values" {
-  type    = bool
-  default = false
-}
+# variable "use_forwarded_values" {
+#   type    = bool
+#   default = false
+# }
 
 variable "forward_headers" {
   description = "Specifies the Headers, if any, that you want CloudFront to vary upon for this cache behavior. Specify `*` to include all headers."
@@ -241,8 +260,8 @@ variable "forward_query_string" {
 }
 
 variable "query_string_cache_keys" {
-  type        = list(string)
-  default     = []
+  type = list(string)
+  default = []
   description = <<EOF
 When specified, along with a value of true for query_string, all query strings are forwarded, however only the query string keys listed in this argument are cached.
 
@@ -251,8 +270,8 @@ EOF
 }
 
 variable "whitelisted_names" {
-  type        = list(string)
-  default     = []
+  type = list(string)
+  default = []
   description = <<EOF
 If you have specified whitelist to forward, the whitelisted cookies that you want CloudFront to forward to your origin.
 

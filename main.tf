@@ -5,7 +5,7 @@ locals {
   project                = var.context.project
   cloudfront_name_prefix = "${local.project}-${var.service_name}"
   create                 = var.create
-  create_oac             = local.create && var.origin_access_control_id == null
+  create_oac             = local.create && var.create_origin_access_control && var.origin_access_control_id == null
   custom_error_response  = var.enable_custom_error_response ? [
     {
       error_code         = 404
@@ -33,7 +33,7 @@ resource "aws_cloudfront_distribution" "this" {
   enabled             = var.enabled
   is_ipv6_enabled     = var.is_ipv6_enabled
   default_root_object = var.default_root_object
-  comment = format("%s-cf-dist", local.cloudfront_name_prefix)
+  comment             = format("%s-cf-dist", local.cloudfront_name_prefix)
   price_class         = var.price_class
   aliases             = var.domain_aliases
   retain_on_delete    = false
@@ -50,8 +50,8 @@ resource "aws_cloudfront_distribution" "this" {
   }
 
   origin {
-    domain_name              = var.bucket_regional_domain_name
-    origin_id                = var.bucket_domain_name
+    domain_name              = var.origin_domain_name
+    origin_id                = var.origin_id
     origin_path              = var.origin_path
     origin_access_control_id = local.create_oac ? aws_cloudfront_origin_access_control.this[0].id : var.origin_access_control_id
     connection_attempts      = var.connection_attempts
@@ -73,6 +73,15 @@ resource "aws_cloudfront_distribution" "this" {
       }
     }
 
+    custom_origin_config {
+      # HTTPS 로만 통신
+      # origin_protocol_policy = "https-only"
+      origin_protocol_policy = "match-viewer"
+      http_port              = 80
+      https_port             = 443
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+
     #    s3_origin_config - (Optional) CloudFront S3 origin configuration information. If a custom origin is required, use custom_origin_config instead.
     #    custom_origin_config - The CloudFront custom origin configuration information. If an S3 origin is required, use origin_access_control_id or s3_origin_config instead.
     #    custom_header (Optional) - One or more sub-resources with name and value parameters that specify header data that will be sent to the origin (multiples allowed).
@@ -90,29 +99,34 @@ resource "aws_cloudfront_distribution" "this" {
     #  trusted_key_groups (Optional) - List of key group IDs that CloudFront can use to validate signed URLs or signed cookies. See the CloudFront User Guide for more information about this feature.
     #  trusted_signers (Optional) - List of AWS account IDs (or self) that you want to allow to create signed URLs for private content. See the CloudFront User Guide for more information about this feature.
 
-    target_origin_id          = var.bucket_domain_name
-    allowed_methods           = var.allowed_methods
-    cached_methods            = var.cached_methods
-    viewer_protocol_policy    = var.viewer_protocol_policy
-    cache_policy_id           = var.cache_policy_id
+    target_origin_id           = var.origin_id
+    allowed_methods            = var.allowed_methods
+    cached_methods             = var.cached_methods
+    viewer_protocol_policy     = var.viewer_protocol_policy
+    cache_policy_id            = var.cache_policy_id
+    origin_request_policy_id   = var.origin_request_policy_id
+    response_headers_policy_id = var.response_headers_policy_id
+
+
     default_ttl               = var.cache_policy_id == null || var.cache_policy_id == "" ? var.default_ttl : 0
     min_ttl                   = var.cache_policy_id == null || var.cache_policy_id == "" ? var.min_ttl : 0
     max_ttl                   = var.cache_policy_id == null || var.cache_policy_id == "" ? var.max_ttl : 0
     compress                  = var.compress
     field_level_encryption_id = var.field_level_encryption_id
 
-    dynamic "forwarded_values" {
-      for_each = var.use_forwarded_values ? [true] : []
-      content {
-        headers                 = var.forward_headers
-        query_string            = var.forward_query_string
-        query_string_cache_keys = var.query_string_cache_keys
-        cookies {
-          forward               = var.forward_cookies
-          whitelisted_names     = var.whitelisted_names
-        }
-      }
-    }
+    # Deprecated
+    # dynamic "forwarded_values" {
+    #   for_each = var.use_forwarded_values ? [true] : []
+    #   content {
+    #     headers                 = var.forward_headers
+    #     query_string            = var.forward_query_string
+    #     query_string_cache_keys = var.query_string_cache_keys
+    #     cookies {
+    #       forward               = var.forward_cookies
+    #       whitelisted_names     = var.whitelisted_names
+    #     }
+    #   }
+    # }
 
     dynamic "lambda_function_association" {
       for_each = var.lambda_functions
@@ -145,11 +159,12 @@ resource "aws_cloudfront_distribution" "this" {
       path_pattern                = try(behavior.value.path_pattern, "*")
       allowed_methods             = try(behavior.value.allowed_methods, ["GET", "HEAD", "OPTIONS"])
       cached_methods              = try(behavior.value.cached_methods, ["GET", "HEAD", "OPTIONS"])
-      origin_request_policy_id    = try(behavior.value.origin_request_policy_id, null)
       viewer_protocol_policy      = try(behavior.value.viewer_protocol_policy, "https-only")
+      cache_policy_id             = try(behavior.value.cache_policy_id, null)
+      origin_request_policy_id    = try(behavior.value.origin_request_policy_id, null)
+      response_headers_policy_id  = try(behavior.value.response_headers_policy_id, null)
       compress                    = try(behavior.value.compress, false)
       field_level_encryption_id   = try(behavior.value.field_level_encryption_id, "")
-      cache_policy_id             = try(behavior.value.cache_policy_id, null)
       default_ttl                 = try(behavior.value.cache_policy_id, null) == null ? try(behavior.value.default_ttl, 86400) : 0
       min_ttl                     = try(behavior.value.cache_policy_id, null) == null ? try(behavior.value.min_ttl, 0) : 0
       max_ttl                     = try(behavior.value.cache_policy_id, null) == null ? try(behavior.value.max_ttl, 31536000) : 0
@@ -157,22 +172,21 @@ resource "aws_cloudfront_distribution" "this" {
       realtime_log_config_arn     = try(behavior.value.realtime_log_config_arn, null)
       trusted_signers             = try(behavior.value.trusted_signers, null)
       trusted_key_groups          = try(behavior.value.trusted_key_groups, null)
-      response_headers_policy_id  = try(behavior.value.response_headers_policy_id, null)
 
-      dynamic "forwarded_values" {
-        for_each = try(behavior.value.use_forwarded_values, false) ? [true] : []
-
-        content {
-          headers                 = try(behavior.value.headers, [])
-          query_string            = try(behavior.value.query_string, false)
-          query_string_cache_keys = try(behavior.value.query_string_cache_keys, [])
-
-          cookies {
-            forward               = try(behavior.value.cookies_forward, "none")
-            whitelisted_names     = try(behavior.value.cookies_whitelisted_names, [])
-          }
-        }
-      }
+      # dynamic "forwarded_values" {
+      #   for_each = try(behavior.value.use_forwarded_values, false) ? [true] : []
+      #
+      #   content {
+      #     headers                 = try(behavior.value.headers, [])
+      #     query_string            = try(behavior.value.query_string, false)
+      #     query_string_cache_keys = try(behavior.value.query_string_cache_keys, [])
+      #
+      #     cookies {
+      #       forward               = try(behavior.value.cookies_forward, "none")
+      #       whitelisted_names     = try(behavior.value.cookies_whitelisted_names, [])
+      #     }
+      #   }
+      # }
 
       dynamic "lambda_function_association" {
         for_each = try(behavior.value.lambda_functions, [])
