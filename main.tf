@@ -2,11 +2,14 @@
 # see - https://github.com/ankit-jn/terraform-aws-examples/blob/main/aws-cdn/dev.tfvars
 
 locals {
-  project                = var.context.project
-  cloudfront_name_prefix = "${local.project}-${var.service_name}"
-  create                 = var.create
-  create_oac             = local.create && var.create_origin_access_control && var.origin_access_control_id == null
-  custom_error_response  = var.enable_custom_error_response ? [
+  project                       = var.context.project
+  cloudfront_name_prefix        = "${local.project}-${var.service_name}"
+  cloudfront_name               = "${local.cloudfront_name_prefix}-cf"
+  create                        = var.create
+  create_origin_access_control  = local.create && var.create_origin_access_control && var.origin_access_control_id == null
+  create_origin_access_identity = local.create && !var.create_origin_access_control && var.origin_access_identity != null
+
+  custom_error_response = var.enable_custom_error_response ? [
     {
       error_code         = 404
       response_code      = 404
@@ -20,20 +23,11 @@ locals {
   ] : []
 }
 
-resource "aws_cloudfront_origin_access_control" "this" {
-  count                             = local.create_oac ? 1 : 0
-  name                              = "${local.cloudfront_name_prefix}-cf-oac"
-  description                       = var.origin_access_control_description != null ? var.origin_access_control_description : "${local.cloudfront_name_prefix}-cf-oac Policy"
-  origin_access_control_origin_type = var.origin_access_control_origin_type
-  signing_protocol                  = var.signing_protocol
-  signing_behavior                  = var.signing_behavior
-}
-
 resource "aws_cloudfront_distribution" "this" {
   enabled             = var.enabled
   is_ipv6_enabled     = var.is_ipv6_enabled
   default_root_object = var.default_root_object
-  comment             = format("%s-cf-dist", local.cloudfront_name_prefix)
+  comment             = local.cloudfront_name
   price_class         = var.price_class
   aliases             = var.domain_aliases
   retain_on_delete    = false
@@ -50,12 +44,34 @@ resource "aws_cloudfront_distribution" "this" {
   }
 
   origin {
-    domain_name              = var.origin_domain_name
-    origin_id                = var.origin_id
-    origin_path              = var.origin_path
-    origin_access_control_id = local.create_oac ? aws_cloudfront_origin_access_control.this[0].id : var.origin_access_control_id
-    connection_attempts      = var.connection_attempts
-    connection_timeout       = var.connection_timeout
+    domain_name         = var.origin_domain_name
+    origin_id           = var.origin_id
+    origin_path = var.origin_path
+    # origin_access_control_id = local.create_origin_access_control ? aws_cloudfront_origin_access_control.this[0].id : var.origin_access_control_id
+    connection_attempts = var.connection_attempts
+    connection_timeout  = var.connection_timeout
+
+    dynamic "s3_origin_config" {
+      for_each = local.create_origin_access_identity ? [1] : []
+      content {
+        origin_access_identity = lookup(lookup(aws_cloudfront_origin_access_identity.this, "origin-access-identity", {}), "cloudfront_access_identity_path", "")
+      }
+    }
+
+    dynamic "custom_origin_config" {
+      for_each = var.custom_origin_config
+      content {
+        http_port              = custom_origin_config.value.http_port
+        https_port             = custom_origin_config.value.https_port
+        origin_protocol_policy = custom_origin_config.value.origin_protocol_policy
+        origin_ssl_protocols   = custom_origin_config.value.origin_ssl_protocols
+        origin_keepalive_timeout = lookup(custom_origin_config.value, "origin_keepalive_timeout", null)
+        origin_read_timeout = lookup(custom_origin_config.value, "origin_read_timeout", null)
+      }
+    }
+
+    #    s3_origin_config - (Optional) CloudFront S3 origin configuration information. If a custom origin is required, use custom_origin_config instead.
+    #    custom_origin_config - The CloudFront custom origin configuration information. If an S3 origin is required, use origin_access_control_id or s3_origin_config instead.
 
     dynamic "origin_shield" {
       for_each = var.origin_shield != null ? [true] : []
@@ -65,26 +81,14 @@ resource "aws_cloudfront_distribution" "this" {
       }
     }
 
+    #  custom_header (Optional) - One or more sub-resources with name and value parameters that specify header data that will be sent to the origin (multiples allowed).
     dynamic "custom_header" {
       for_each = var.custom_header
       content {
-        name  = custom_header.value.name
-        value = custom_header.value.value
+        name  = custom_header.key
+        value = custom_header.value
       }
     }
-
-    custom_origin_config {
-      # HTTPS 로만 통신
-      # origin_protocol_policy = "https-only"
-      origin_protocol_policy = "match-viewer"
-      http_port              = 80
-      https_port             = 443
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
-
-    #    s3_origin_config - (Optional) CloudFront S3 origin configuration information. If a custom origin is required, use custom_origin_config instead.
-    #    custom_origin_config - The CloudFront custom origin configuration information. If an S3 origin is required, use origin_access_control_id or s3_origin_config instead.
-    #    custom_header (Optional) - One or more sub-resources with name and value parameters that specify header data that will be sent to the origin (multiples allowed).
 
   }
 
@@ -106,13 +110,13 @@ resource "aws_cloudfront_distribution" "this" {
     cache_policy_id            = var.cache_policy_id
     origin_request_policy_id   = var.origin_request_policy_id
     response_headers_policy_id = var.response_headers_policy_id
+    compress                   = var.compress
+    field_level_encryption_id  = var.field_level_encryption_id
 
-
-    default_ttl               = var.cache_policy_id == null || var.cache_policy_id == "" ? var.default_ttl : 0
-    min_ttl                   = var.cache_policy_id == null || var.cache_policy_id == "" ? var.min_ttl : 0
-    max_ttl                   = var.cache_policy_id == null || var.cache_policy_id == "" ? var.max_ttl : 0
-    compress                  = var.compress
-    field_level_encryption_id = var.field_level_encryption_id
+    # Deprecated
+    # default_ttl               = var.cache_policy_id == null || var.cache_policy_id == "" ? var.default_ttl : 0
+    # min_ttl                   = var.cache_policy_id == null || var.cache_policy_id == "" ? var.min_ttl : 0
+    # max_ttl                   = var.cache_policy_id == null || var.cache_policy_id == "" ? var.max_ttl : 0
 
     # Deprecated
     # dynamic "forwarded_values" {
@@ -155,23 +159,25 @@ resource "aws_cloudfront_distribution" "this" {
     iterator = behavior
 
     content {
-      target_origin_id            = behavior.value.target_origin_id
-      path_pattern                = try(behavior.value.path_pattern, "*")
-      allowed_methods             = try(behavior.value.allowed_methods, ["GET", "HEAD", "OPTIONS"])
-      cached_methods              = try(behavior.value.cached_methods, ["GET", "HEAD", "OPTIONS"])
-      viewer_protocol_policy      = try(behavior.value.viewer_protocol_policy, "https-only")
-      cache_policy_id             = try(behavior.value.cache_policy_id, null)
-      origin_request_policy_id    = try(behavior.value.origin_request_policy_id, null)
-      response_headers_policy_id  = try(behavior.value.response_headers_policy_id, null)
-      compress                    = try(behavior.value.compress, false)
-      field_level_encryption_id   = try(behavior.value.field_level_encryption_id, "")
-      default_ttl                 = try(behavior.value.cache_policy_id, null) == null ? try(behavior.value.default_ttl, 86400) : 0
-      min_ttl                     = try(behavior.value.cache_policy_id, null) == null ? try(behavior.value.min_ttl, 0) : 0
-      max_ttl                     = try(behavior.value.cache_policy_id, null) == null ? try(behavior.value.max_ttl, 31536000) : 0
-      smooth_streaming            = try(behavior.value.smooth_streaming, true)
-      realtime_log_config_arn     = try(behavior.value.realtime_log_config_arn, null)
-      trusted_signers             = try(behavior.value.trusted_signers, null)
-      trusted_key_groups          = try(behavior.value.trusted_key_groups, null)
+      target_origin_id = behavior.value.target_origin_id
+      path_pattern = try(behavior.value.path_pattern, "*")
+      allowed_methods = try(behavior.value.allowed_methods, ["GET", "HEAD", "OPTIONS"])
+      cached_methods = try(behavior.value.cached_methods, ["GET", "HEAD", "OPTIONS"])
+      viewer_protocol_policy = try(behavior.value.viewer_protocol_policy, "https-only")
+      cache_policy_id = try(behavior.value.cache_policy_id, null)
+      origin_request_policy_id = try(behavior.value.origin_request_policy_id, null)
+      response_headers_policy_id = try(behavior.value.response_headers_policy_id, null)
+      compress = try(behavior.value.compress, false)
+      field_level_encryption_id = try(behavior.value.field_level_encryption_id, "")
+      smooth_streaming = try(behavior.value.smooth_streaming, true)
+      realtime_log_config_arn = try(behavior.value.realtime_log_config_arn, null)
+      trusted_signers = try(behavior.value.trusted_signers, null)
+      trusted_key_groups = try(behavior.value.trusted_key_groups, null)
+
+      # Deprecated
+      # default_ttl      = try(behavior.value.cache_policy_id, null) == null ? try(behavior.value.default_ttl, 86400) : 0
+      # min_ttl          = try(behavior.value.cache_policy_id, null) == null ? try(behavior.value.min_ttl, 0) : 0
+      # max_ttl          = try(behavior.value.cache_policy_id, null) == null ? try(behavior.value.max_ttl, 31536000) : 0
 
       # dynamic "forwarded_values" {
       #   for_each = try(behavior.value.use_forwarded_values, false) ? [true] : []
@@ -192,14 +198,14 @@ resource "aws_cloudfront_distribution" "this" {
         for_each = try(behavior.value.lambda_functions, [])
         iterator = lambda
         content {
-          event_type    = lambda.value.event_type
-          lambda_arn    = lambda.value.lambda_arn
-          include_body  = try(lambda.value.include_body, false)
+          event_type = lambda.value.event_type
+          lambda_arn = lambda.value.lambda_arn
+          include_body = try(lambda.value.include_body, false)
         }
       }
 
       dynamic "function_association" {
-        for_each = try(behavior.value.cloudfront_functions,[])
+        for_each = try(behavior.value.cloudfront_functions, [])
         iterator = func
         content {
           event_type   = func.value.event_type
@@ -222,9 +228,8 @@ resource "aws_cloudfront_distribution" "this" {
 
     content {
       error_code = custom_error_response.value["error_code"]
-
-      response_code         = lookup(custom_error_response.value, "response_code", null)
-      response_page_path    = lookup(custom_error_response.value, "response_page_path", null)
+      response_code = lookup(custom_error_response.value, "response_code", null)
+      response_page_path = lookup(custom_error_response.value, "response_page_path", null)
       error_caching_min_ttl = lookup(custom_error_response.value, "error_caching_min_ttl", null)
     }
   }
@@ -238,7 +243,7 @@ resource "aws_cloudfront_distribution" "this" {
   web_acl_id = var.web_acl_arn
 
   tags = merge(var.context.tags, {
-    Name = format("%s-cf-dist", local.cloudfront_name_prefix)
+    Name = local.cloudfront_name
   })
 
 }

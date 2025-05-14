@@ -96,6 +96,28 @@ variable "connection_timeout" {
   default     = null
 }
 
+variable "custom_origin_config" {
+  type = list(object({
+    http_port                = number
+    https_port               = number
+    origin_protocol_policy   = string
+    origin_ssl_protocols     = list(string)
+    origin_keepalive_timeout = optional(string)
+    origin_read_timeout      = optional(string)
+  }))
+  default = []
+  description = <<-EOF
+The CloudFront custom origin configuration information.
+
+Ex)
+  custom_origin_config = [{
+      origin_protocol_policy = "https-only"
+      http_port              = 80
+      https_port             = 443
+      origin_ssl_protocols   = ["TLSv1.2"]
+  }]
+EOF
+}
 
 variable "origin_shield" {
   type = object({
@@ -114,20 +136,15 @@ EOF
 }
 
 variable "custom_header" {
-  type = list(object({
-    name  = string
-    value = string
-  }))
-  default = []
+  type = map(string)
+  default = {}
   description = <<EOF
 List of one or more custom headers passed to the origin
   see - https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/origin-shield.html
-  custom_header = [
-    {
-      "Cache-Control" = "X-Custom-Header",
-      "HeaderValue": "MyCustomValue"
-    }
-  ]
+  custom_header = {
+    "Cache-Control" = "X-Custom-Header",
+    "HeaderValue": "MyCustomValue"
+  }
 EOF
 }
 
@@ -151,23 +168,37 @@ variable "domain_aliases" {
   default     = null # ["tools.customer.co.kr"]
 }
 
-variable "create_origin_access_identity" {
-  type    = bool
-  default = false
+variable "origin_access_identity" {
+  type = string
+  default = null
+  description = <<EOF
+The CloudFront origin access identity to associate with the origin.
+
+  You need to add s3 access permission to YOUR-S3-ORIGIN-BUCKET.
+  S3 Bucket Permission of YOUR-S3-ORIGIN-BUCKET
+------------------
+    {
+        "Sid": "AllowLegacyOAIReadOnly",
+        "Effect": "Allow",
+        "Principal": {
+            "AWS": "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity EKB111122223333Q"
+        },
+        "Action": "s3:GetObject",
+        "Resource": "arn:aws:s3:::YOUR-S3-ORIGIN-BUCKET/*"
+    }
+------------------
+
+EOF
 }
 
+/*
 variable "origin_access_identities" {
   type = map(string)
   default = {}
   description = <<EOF
-
-  origin_access_identities = {
-    s3_oac = "CloudFront can access by s3_oac"
-    s3_two = "CloudFront can access by s3_two"
-  }
 EOF
-
 }
+ */
 
 ################################################################################
 # default_cache_behavior
@@ -188,7 +219,11 @@ variable "cached_methods" {
 variable "cache_policy_id" {
   type        = string
   default     = ""
-  description = "Unique identifier of the cache policy that is attached to the cache behavior. If configuring the default_cache_behavior either cache_policy_id or forwarded_values must be set."
+  description = <<-EOF
+Unique identifier of the cache policy that is attached to the cache behavior. If configuring the default_cache_behavior either cache_policy_id or forwarded_values must be set.
+
+  see - https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html
+EOF
 }
 
 variable "origin_request_policy_id" {
@@ -209,23 +244,23 @@ variable "viewer_protocol_policy" {
   description = "Use this element to specify the protocol that users can use to access the files in the origin specified by TargetOriginId. One of allow-all, https-only, or redirect-to-https."
 }
 
-variable "default_ttl" {
-  type        = number
-  default     = 3600
-  description = "Default amount of time (in seconds) that an object is in a CloudFront cache"
-}
-
-variable "min_ttl" {
-  type        = number
-  default     = 0
-  description = "Minimum amount of time that you want objects to stay in CloudFront caches"
-}
-
-variable "max_ttl" {
-  type        = number
-  default     = 86400
-  description = "Maximum amount of time (in seconds) that an object is in a CloudFront cache"
-}
+# variable "default_ttl" {
+#   type        = number
+#   default     = 3600
+#   description = "Default amount of time (in seconds) that an object is in a CloudFront cache"
+# }
+#
+# variable "min_ttl" {
+#   type        = number
+#   default     = 0
+#   description = "Minimum amount of time that you want objects to stay in CloudFront caches"
+# }
+#
+# variable "max_ttl" {
+#   type        = number
+#   default     = 86400
+#   description = "Maximum amount of time (in seconds) that an object is in a CloudFront cache"
+# }
 
 variable "compress" {
   type        = bool

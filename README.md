@@ -13,7 +13,7 @@ locals {
   context = {
     region      = "ap-northeast-2"
     project     = local.project
-    pri_domain  = "backend.opsnow.com"
+    pri_domain  = "demo.internal"
     name_prefix = "demo-an2d"
     tags        = {
       Team = "DevOps"
@@ -26,7 +26,7 @@ data "aws_cloudfront_cache_policy" "cache" {
 }
 
 module "cfKeyGrp" {
-  source      = "git::https://code.bespinglobal.com/scm/op/tfmodule-aws-cloudfront.git//keygroup?ref=v1.0.0"
+  source      = "git::https://github.com/oniops/tfmodule-aws-cloudfront.git//keygroup?ref=v1.0.0"
   name        = "${local.project}-cf-keygroup"
   public_keys = {
     "contents-s3-pub" = {
@@ -37,7 +37,7 @@ module "cfKeyGrp" {
 }
 
 module "cf" {
-  source = "git::https://code.bespinglobal.com/scm/op/tfmodule-aws-cloudfront.git?ref=v1.0.0"
+  source = "git::https://github.com/oniops/tfmodule-aws-cloudfront.git?ref=v1.0.0"
 
   context                     = module.ctx.context
   service_name                = "contents"
